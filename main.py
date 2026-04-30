@@ -1,4 +1,4 @@
-from src.person1_preprocessing import Preprocessor
+from preprocessing import Preprocessor
 
 def main():
     input_folder = "data/raw"
