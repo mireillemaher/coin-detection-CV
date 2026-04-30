@@ -146,3 +146,10 @@ Thumbs.db
 
 # Project-specific: Ignore processed data (assuming it's generated)
 data/processed/
+data/edges/
+
+# Pipeline debug outputs (regenerated each run)
+outputs/
+
+# Any venv variant (e.g. .venv312, .venv-old, etc.)
+.venv*/

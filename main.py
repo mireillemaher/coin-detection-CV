@@ -1,19 +1,17 @@
-from preprocessing import Preprocessor
+from src.preprocessing import Preprocessor
+
 
 def main():
     input_folder = "data/raw"
-
     preprocessor = Preprocessor()
-
     results = preprocessor.process_folder(input_folder)
 
-    print("\n✅ Preprocessing Completed!")
-    print("Processed Images:\n")
-
+    print("\nPreprocessing complete.")
+    print("Processed images:\n")
     for name, path in results:
-        print(f"{name} -> {path}")
+        print(f"  {name} -> {path}")
+    print("\nThese images are ready for the edge detection stage.")
 
-    print("\n➡️ These images are ready for Person 2 (Edge Detection)")
 
 if __name__ == "__main__":
     main()
