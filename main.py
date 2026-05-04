@@ -12,6 +12,7 @@ image to data/edges/edge_<filename>.jpg, and circles to data/circles/detected_<f
 
 import os
 import argparse
+from pyexpat import features
 import cv2
 import math
 
@@ -20,6 +21,8 @@ from src.edge_detection import EdgeDetector
 from src.circle_detection import CircleDetector
 from src.watershed import separate_overlapping
 from src.visualization import create_circle_panel, annotate_image
+from src.feature_extraction import extract_features 
+
 
 
 def first_image_in(folder):
@@ -115,6 +118,15 @@ def run_demo(image_path, low_ratio, high_ratio, show, min_r, max_r, vote_thresh)
     final_circles = separate_overlapping(original_img, circles_for_original)
     final_circles = cleanup_circles(final_circles, original_img.shape)
 
+    # Feature Extraction
+    features = extract_features(original_img, final_circles)
+
+    print("\nExtracted Features:")
+    for f in features:
+        print(f"  Coin {f['id']}: r_norm={f['r_norm']:.4f}, "
+            f"hue={f['mean_hue']:.1f}, sat={f['mean_sat']:.1f}, val={f['mean_val']:.1f}")
+    
+
     # Visualization
     panel_path_circle = "outputs/circle_debug/circle_panel.png"
     create_circle_panel(original_img, stages["edge_map"], results,
@@ -173,6 +185,15 @@ def run_batch(input_folder, min_r, max_r, vote_thresh):
         final_circles = separate_overlapping(original_img, circles_for_original)
         final_circles = cleanup_circles(final_circles, original_img.shape)
         
+        # Feature Extraction
+        features = extract_features(original_img, final_circles)
+
+        print("\nExtracted Features:")
+        for f in features:
+            print(f"  Coin {f['id']}: r_norm={f['r_norm']:.4f}, "
+                f"hue={f['mean_hue']:.1f}, sat={f['mean_sat']:.1f}, val={f['mean_val']:.1f}")
+
+
         # Annotation
         annotated = annotate_image(original_img, final_circles, color=(0, 255, 0))
         detected_path = os.path.join(circle_detector.output_dir, f"detected_{name}")
