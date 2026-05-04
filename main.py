@@ -106,7 +106,7 @@ def run_demo(image_path, low_ratio, high_ratio, show, min_r, max_r, vote_thresh)
     # Stage 3: Circle Detection
     print("  running circle detection...")
     circle_detector = CircleDetector(min_r=min_r, max_r=max_r, vote_thresh=vote_thresh)
-    results = circle_detector.detect(blurred)
+    results = circle_detector.detect(blurred, custom_edge_map=stages["edge_map"])
 
     circles_for_original = scale_circles(
         results["circles"],

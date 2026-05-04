@@ -32,7 +32,7 @@ class EdgeDetector:
     Kx = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=np.float32)
     Ky = np.array([[-1, -2, -1], [ 0,  0,  0], [ 1,  2,  1]], dtype=np.float32)
 
-    def __init__(self, low_ratio=0.05, high_ratio=0.15, 
+    def __init__(self, low_ratio=0.08, high_ratio=0.20, 
                  output_dir="data/edges", debug_dir="outputs/edge_debug"):
         self.low_ratio = low_ratio
         self.high_ratio = high_ratio
@@ -72,14 +72,18 @@ class EdgeDetector:
         mask_0 = ((angle >= 0) & (angle < 22.5)) | ((angle >= 157.5) & (angle < 180))
         keep_0 = (magnitude >= mag_left) & (magnitude >= mag_right)
 
+        # FIX: 45 degree angle points down-right (+x, +y). 
+        # Compare with up-left and down-right neighbors.
         mask_45 = (angle >= 22.5) & (angle < 67.5)
-        keep_45 = (magnitude >= mag_down_left) & (magnitude >= mag_up_right)
+        keep_45 = (magnitude >= mag_up_left) & (magnitude >= mag_down_right)
 
         mask_90 = (angle >= 67.5) & (angle < 112.5)
         keep_90 = (magnitude >= mag_up) & (magnitude >= mag_down)
 
+        # FIX: 135 degree angle points down-left (-x, +y). 
+        # Compare with down-left and up-right neighbors.
         mask_135 = (angle >= 112.5) & (angle < 157.5)
-        keep_135 = (magnitude >= mag_up_left) & (magnitude >= mag_down_right)
+        keep_135 = (magnitude >= mag_down_left) & (magnitude >= mag_up_right)
 
         keep = (mask_0 & keep_0) | (mask_45 & keep_45) | (mask_90 & keep_90) | (mask_135 & keep_135)
         out[keep] = magnitude[keep]
@@ -120,6 +124,19 @@ class EdgeDetector:
         nms = self.non_max_suppression(magnitude, direction)
         thresh, weak, strong = self.double_threshold(nms)
         edges = self.hysteresis(thresh, weak, strong) # type: ignore
+
+        # Post-process final binary edge map: remove tiny speckles by
+        # filtering connected components by area. Avoid morphological
+        # opening here because it erases 1-pixel-wide contours.
+        edges = edges.astype(np.uint8)
+
+        # Remove small connected components (specks) below an area threshold
+        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(edges, connectivity=8)
+        min_area = 8
+        for i in range(1, num_labels):
+            area = stats[i, cv2.CC_STAT_AREA]
+            if area < min_area:
+                edges[labels == i] = 0
 
         return {
             "input": blurred_gray, "magnitude": magnitude,

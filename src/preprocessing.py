@@ -15,40 +15,38 @@ class Preprocessor:
     def preprocess_image(self, image_path, visualize=True):
         # Step 1: Load image
         img = cv2.imread(image_path)
-
         if img is None:
             raise ValueError(f"Image not found: {image_path}")
 
-        # Keep original geometry by default. Optional explicit resize can be enabled.
         if self.resize_to is not None:
             img = cv2.resize(img, self.resize_to)
 
         # Step 2: Convert to grayscale
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        # Preprocessing for edge detection
-        kernel = np.ones((5,5),np.uint8)
-        eroded = cv2.erode(gray, kernel, iterations=5)
-        dilated = cv2.dilate(eroded, kernel, iterations=5)
-        blurred = ndi.gaussian_filter(dilated, 2.4)
+        # FIX: Removed the MORPH_OPEN and MORPH_CLOSE operations that were 
+        # creating artificial sharp noise inside the coins.
+        median = cv2.medianBlur(gray, 7) # Increased to 7 to wipe out coin textures
+        blurred = cv2.GaussianBlur(median, (7, 7), 1.5)
 
         if visualize:
-            self._save_debug(image_path, img, gray, eroded, dilated, blurred)
+            # Just pass 'gray' to satisfy the existing debug variables
+            self._save_debug(image_path, img, gray, gray, gray, median, blurred)
 
-        # Save final output
         filename = os.path.basename(image_path)
         output_path = os.path.join(self.output_dir, filename)
         cv2.imwrite(output_path, blurred)
 
         return blurred, output_path
 
-    def _save_debug(self, path, img, gray, eroded, dilated, blurred):
+    def _save_debug(self, path, img, gray, opened, closed, median, blurred):
         filename = os.path.basename(path)
 
         debug_image = np.hstack([
             cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR),
-            cv2.cvtColor(eroded, cv2.COLOR_GRAY2BGR),
-            cv2.cvtColor(dilated, cv2.COLOR_GRAY2BGR),
+            cv2.cvtColor(opened, cv2.COLOR_GRAY2BGR),
+            cv2.cvtColor(closed, cv2.COLOR_GRAY2BGR),
+            cv2.cvtColor(median, cv2.COLOR_GRAY2BGR),
             cv2.cvtColor(blurred, cv2.COLOR_GRAY2BGR)
         ])
 

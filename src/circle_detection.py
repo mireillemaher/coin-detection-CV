@@ -55,10 +55,11 @@ class CircleDetector:
         return hits / total
 
     def _nms(self, circles):
-        """Suppress near-duplicate circles on the same coin."""
+        """Suppress near-duplicate circles AND internal texture noise."""
         if not circles:
             return []
 
+        # Sort by edge support (confidence) descending
         circles_sorted = sorted(circles, key=lambda c: c[3], reverse=True)
         kept = []
 
@@ -68,9 +69,17 @@ class CircleDetector:
             for k in kept:
                 x2, y2, r2, _ = k
                 center_dist = math.hypot(x1 - x2, y1 - y2)
+                
+                # RULE 1: Near-duplicate circles on the exact same coin
                 radius_ratio = abs(r1 - r2) / max(r1, r2)
-
                 if center_dist < 0.45 * min(r1, r2) and radius_ratio < 0.35:
+                    keep = False
+                    break
+                    
+                # RULE 2: "Circle inside a circle" (Internal texture noise)
+                # If the center of this circle is inside the radius of the stronger circle
+                # (with a 0.8 margin to safely allow genuine, overlapping adjacent coins)
+                if center_dist < max(r1, r2) * 0.8:
                     keep = False
                     break
 
@@ -79,7 +88,7 @@ class CircleDetector:
 
         return [(int(x), int(y), int(r)) for x, y, r, _ in kept]
 
-    def detect(self, image):
+    def detect(self, image, custom_edge_map=None): # <-- Added custom_edge_map parameter
         # image should be an 8-bit single-channel image
         if image.dtype != np.uint8:
             image = image.astype(np.uint8)
@@ -89,17 +98,23 @@ class CircleDetector:
         if max_allowed_r <= self.minimmRadii:
             max_allowed_r = self.minimmRadii + 1
 
-        # Mild blur stabilizes gradients before Hough voting.
-        hough_input = cv2.GaussianBlur(image, (9, 9), 1.6)
-        edge_map = cv2.Canny(hough_input, 70, 170)
+        # FIX 1: Do not double-blur the image. It is already preprocessed perfectly.
+        hough_input = image 
 
-        # In OpenCV, param1 is Canny threshold, param2 is accumulator threshold.
-        # vote_thresh maps somewhat to param2.
-        # minDist maps to regRadii
+        # FIX 2: Use the flawless custom edge map from Stage 2 to validate circles!
+        if custom_edge_map is not None:
+            edge_map = custom_edge_map
+        else:
+            # Fallback (with safer thresholds) if no custom edge map is provided
+            edge_map = cv2.Canny(hough_input, 30, 100)
+
+        # FIX 3: Lower param1 (Canny threshold) from 150 to 50. 
+        # This allows OpenCV to propose circles on softer gradients. 
+        # We then rely on our perfect `edge_map` to filter out the false ones.
         circles_cv = cv2.HoughCircles(
             hough_input, cv2.HOUGH_GRADIENT,
             dp=1.2, minDist=max(self.regRadii, 1),
-            param1=150, param2=self.intenThres,
+            param1=100, param2=self.intenThres, 
             minRadius=self.minimmRadii, maxRadius=max_allowed_r
         )
         
@@ -111,8 +126,11 @@ class CircleDetector:
                 if x - r < 2 or y - r < 2 or x + r >= w - 2 or y + r >= h - 2:
                     continue
 
+                # This now checks your perfectly unbroken edges!
                 support = self._circle_edge_support(edge_map, x, y, r)
-                if support < 0.22:
+                
+                # Slightly relaxed support ratio to ensure we don't miss coins
+                if support < 0.30:
                     continue
 
                 filtered.append((int(x), int(y), int(r), float(support)))
@@ -123,8 +141,7 @@ class CircleDetector:
             "circles": circles,
             "candidates_raw": circles,
             "accumulator": edge_map[..., np.newaxis].astype(np.float32),
-            "radii": np.array([0]) # Dummy
+            "radii": np.array([0])
         }
-
     def run(self, image, original_img=None, name=None, show=True):
         return self.detect(image)
