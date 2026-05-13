@@ -88,7 +88,7 @@ class CircleDetector:
 
         return [(int(x), int(y), int(r)) for x, y, r, _ in kept]
 
-    def detect(self, image, custom_edge_map=None): # <-- Added custom_edge_map parameter
+    def detect(self, image, custom_edge_map=None):
         # image should be an 8-bit single-channel image
         if image.dtype != np.uint8:
             image = image.astype(np.uint8)
@@ -98,19 +98,14 @@ class CircleDetector:
         if max_allowed_r <= self.minimmRadii:
             max_allowed_r = self.minimmRadii + 1
 
-        # FIX 1: Do not double-blur the image. It is already preprocessed perfectly.
         hough_input = image 
 
-        # FIX 2: Use the flawless custom edge map from Stage 2 to validate circles!
         if custom_edge_map is not None:
             edge_map = custom_edge_map
         else:
             # Fallback (with safer thresholds) if no custom edge map is provided
             edge_map = cv2.Canny(hough_input, 30, 100)
 
-        # FIX 3: Lower param1 (Canny threshold) from 150 to 50. 
-        # This allows OpenCV to propose circles on softer gradients. 
-        # We then rely on our perfect `edge_map` to filter out the false ones.
         circles_cv = cv2.HoughCircles(
             hough_input, cv2.HOUGH_GRADIENT,
             dp=1.2, minDist=max(self.regRadii, 1),
