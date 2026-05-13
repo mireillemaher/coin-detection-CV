@@ -84,24 +84,118 @@ def cleanup_circles(circles, image_shape):
     return deduped
 
 
-def annotate_with_labels(image, features, color=(0, 255, 0)):
-    annotated = image.copy() if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+def _text_rect(bl_x, bl_y, text_w, text_h, baseline, pad):
+    """OpenCV putText uses bottom-left (bl_x, bl_y); return axis-aligned rect (x0,y0,x1,y1)."""
+    return (
+        bl_x - pad,
+        bl_y - text_h - pad,
+        bl_x + text_w + pad,
+        bl_y + baseline + pad,
+    )
 
-    for feature in features:
-        x = int(feature["x"])
-        y = int(feature["y"])
+
+def _rects_overlap(a, b):
+    return not (a[2] < b[0] or a[0] > b[2] or a[3] < b[1] or a[1] > b[3])
+
+
+def annotate_with_labels(image, features, color=(0, 255, 0)):
+    """Draw denomination labels with leader lines; radial layout reduces overlap in clusters."""
+    annotated = image.copy() if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    if not features:
+        return annotated
+
+    h, w = annotated.shape[:2]
+    n = len(features)
+    cxs = sum(float(f["x"]) for f in features) / n
+    cys = sum(float(f["y"]) for f in features) / n
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.45
+    thickness = 1
+    pad = 3
+    text_color = (255, 255, 255)
+    bg_color = (32, 32, 32)
+
+    placed_rects = []
+    label_specs = []
+
+    for i, feature in enumerate(features):
+        x = float(feature["x"])
+        y = float(feature["y"])
         coin_id = int(feature["id"])
         denom = feature.get("denomination", "UNKNOWN")
         conf = float(feature.get("denom_conf", 0.0))
-        text = f"coin_{coin_id + 1}:{denom} ({conf:.2f})"
+        r_px = max(6, int(float(feature["r_norm"]) * w))
+
+        dx = x - cxs
+        dy = y - cys
+        dist = math.hypot(dx, dy)
+        if dist < 1e-3:
+            ang = 2 * math.pi * i / max(n, 1)
+            ux, uy = math.cos(ang), math.sin(ang)
+        else:
+            ux, uy = dx / dist, dy / dist
+
+        px, py = -uy, ux
+
+        text = f"#{coin_id + 1} {denom} {conf:.2f}"
+        (text_w, text_h), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+
+        leader = r_px + 16
+        tip_x = x + ux * leader
+        tip_y = y + uy * leader
+
+        bl_x = int(round(tip_x - text_w / 2))
+        bl_y = int(round(tip_y))
+
+        margin = 4
+        bl_x = max(margin, min(w - text_w - margin, bl_x))
+        bl_y = max(text_h + margin, min(h - baseline - margin, bl_y))
+
+        base_bl_x, base_bl_y = bl_x, bl_y
+        rect = _text_rect(bl_x, bl_y, text_w, text_h, baseline, pad)
+        step = 6
+        max_steps = 18
+        for s in range(max_steps):
+            hit = any(_rects_overlap(rect, pr) for pr in placed_rects)
+            if not hit:
+                break
+            sep = (s + 1) * step
+            bl_x = int(round(base_bl_x + px * sep))
+            bl_y = int(round(base_bl_y + py * sep))
+            bl_x = max(margin, min(w - text_w - margin, bl_x))
+            bl_y = max(text_h + margin, min(h - baseline - margin, bl_y))
+            rect = _text_rect(bl_x, bl_y, text_w, text_h, baseline, pad)
+
+        placed_rects.append(rect)
+
+        rim = (int(round(x + ux * r_px)), int(round(y + uy * r_px)))
+        anchor = (
+            int(round(bl_x + text_w / 2)),
+            int(round(bl_y - text_h / 2)),
+        )
+        label_specs.append((rim, anchor, rect, text, bl_x, bl_y))
+
+    for rim, anchor, _rect, _text, _bx, _by in label_specs:
+        cv2.line(annotated, rim, anchor, color, 1, cv2.LINE_AA)
+
+    for _rim, _anchor, rect, text, bl_x, bl_y in label_specs:
+        cv2.rectangle(
+            annotated,
+            (rect[0], rect[1]),
+            (rect[2], rect[3]),
+            bg_color,
+            -1,
+            cv2.LINE_AA,
+        )
         cv2.putText(
             annotated,
             text,
-            (x - 35, y - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            color,
-            1,
+            (bl_x, bl_y),
+            font,
+            font_scale,
+            text_color,
+            thickness,
             cv2.LINE_AA,
         )
 
